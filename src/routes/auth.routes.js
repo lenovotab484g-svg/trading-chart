@@ -1,0 +1,20 @@
+import express from 'express';
+import {
+  requestSMSCode,
+  verifySMSCode,
+  refreshAccessToken
+} from '../controllers/auth.controller.js';
+import { validateRequest, phoneSchema, verifyCodeSchema } from '../utils/validation.js';
+
+const router = express.Router();
+
+// Request SMS code
+router.post('/request-code', validateRequest(phoneSchema), requestSMSCode);
+
+// Verify SMS code and register/login
+router.post('/verify-code', validateRequest(verifyCodeSchema), verifySMSCode);
+
+// Refresh access token
+router.post('/refresh-token', refreshAccessToken);
+
+export default router;

@@ -1,23 +1,56 @@
 import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 import { logger } from '../utils/logger.js';
 
-export const verifyToken = (req, res, next) => {
+export const verifyToken = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
 
     if (!token) {
-      return res.status(401).json({ message: 'No token provided' });
+      return res.status(401).json({ message: 'Access token is required' });
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.userId;
     req.deviceId = decoded.deviceId;
+
+    // Verify device is still active
+    const user = await User.findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if device is in active sessions
+    const isDeviceActive = user.activeSessions.some(
+      session => session.deviceId === decoded.deviceId
+    );
+
+    if (!isDeviceActive) {
+      return res.status(401).json({ 
+        message: 'This device has been logged out. Please login again.' 
+      });
+    }
+
+    // Update last activity time
+    const sessionIndex = user.activeSessions.findIndex(
+      session => session.deviceId === decoded.deviceId
+    );
+    
+    if (sessionIndex !== -1) {
+      user.activeSessions[sessionIndex].lastActivityTime = new Date();
+      await user.save();
+    }
+
     next();
   } catch (error) {
-    logger.error('Token verification error:', error);
     if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ message: 'Token expired' });
+      logger.warn('Token expired');
+      return res.status(401).json({ message: 'Token has expired' });
     }
-    return res.status(401).json({ message: 'Invalid token' });
+    
+    logger.error('Token verification error:', error);
+    return res.status(403).json({ message: 'Invalid token' });
   }
 };
